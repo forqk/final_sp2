@@ -1,21 +1,55 @@
 #pragma once
 
+#include "types.hpp"
+#include <charconv>
 #include <expected>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
-
-#include "types.hpp"
 
 namespace stdx::details {
 
 // здесь ваш код
 
+template <typename T>
+std::expected<T, scan_error> parse_value(std::string_view line) {
+    T value{};
+
+    auto [ptr, ec] = std::from_chars(line.data(), line.data() + line.size(), value);
+
+    if (ec == std::errc{} && ptr == line.data() + line.size()) {
+        return value;
+    }
+    return std::unexpected(scan_error{"wrong value in parse"});
+}
+
 // Функция для парсинга значения с учетом спецификатора формата
 template <typename T>
 std::expected<T, scan_error> parse_value_with_format(std::string_view input, std::string_view fmt) {
-    // здесь ваш код
+    using Type = std::remove_cv_t<T>;
+
+    constexpr bool isSigned = std::is_integral_v<Type> && std::is_signed_v<Type>;
+    constexpr bool isUnsigned = std::is_integral_v<Type> && std::is_unsigned_v<Type>;
+    constexpr bool isFloat = std::is_floating_point_v<Type>;
+    constexpr bool isString = std::is_same_v<Type, std::string>;
+    constexpr bool isStringView = std::is_same_v<Type, std::string_view>;
+
+    bool valid = fmt.empty() || (fmt == "%d" && isSigned) || (fmt == "%u" && isUnsigned) || (fmt == "%f" && isFloat) ||
+                 (fmt == "%s" && (isString || isStringView));
+
+    if (!valid) {
+        return std::unexpected(scan_error{"Invalid format or type"});
+    }
+    
+    if constexpr (isString) {
+        return std::string(input);
+    } else if constexpr (isStringView) {
+        return input;
+    } else {
+        return parse_value<Type>(input);
+    }
 }
 
 // Функция для проверки корректности входных данных и выделения из обеих строк интересующих данных для парсинга
@@ -70,4 +104,4 @@ parse_sources(std::string_view input, std::string_view format) {
     return std::pair{format_parts, input_parts};
 }
 
-} // namespace stdx::details
+}  // namespace stdx::details
