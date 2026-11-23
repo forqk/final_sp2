@@ -1,24 +1,29 @@
 
-#include <gtest/gtest.h>
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
 
 #include "scan.hpp"
-//нейротесты
+// нейротесты
 
 // Успешное сканирование одного значения
 template <typename T>
-void checkScan(std::string_view input, std::string_view fmt,
-               std::remove_cv_t<T> expected) {
+void checkScan(std::string_view input, std::string_view fmt, std::remove_cv_t<T> expected) {
     auto result = stdx::scan<T>(input, fmt);
 
     ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(std::get<0>(result->values()), expected);
-}
 
+    const auto &actual = std::get<0>(result->values());
+
+    if constexpr (std::is_floating_point_v<std::remove_cv_t<T>>) {
+        EXPECT_DOUBLE_EQ(actual, expected);
+    } else {
+        EXPECT_EQ(actual, expected);
+    }
+}
 // Проверка ошибки
 template <typename... Ts>
 void checkScanError(std::string_view input, std::string_view fmt) {
@@ -37,8 +42,7 @@ TEST(ScanTest, UnsignedIntegers) {
     checkScan<uint8_t>("255", "{%u}", 255);
     checkScan<uint16_t>("65535", "{%u}", 65535);
     checkScan<uint32_t>("123456", "{%u}", 123456u);
-    checkScan<uint64_t>("18446744073709551615", "{%u}",
-                        18446744073709551615ULL);
+    checkScan<uint64_t>("18446744073709551615", "{%u}", 18446744073709551615ULL);
 }
 
 TEST(ScanTest, FloatingPoint) {
@@ -70,10 +74,8 @@ TEST(ScanTest, EmptyPlaceholders) {
 }
 
 TEST(ScanTest, MultipleValues) {
-    auto result = stdx::scan<int, double, std::string>(
-        "Number: 42, Price: 3.5, Name: Alex",
-        "Number: {%d}, Price: {%f}, Name: {%s}"
-    );
+    auto result = stdx::scan<int, double, std::string>("Number: 42, Price: 3.5, Name: Alex",
+                                                       "Number: {%d}, Price: {%f}, Name: {%s}");
 
     ASSERT_TRUE(result.has_value());
 
@@ -85,10 +87,7 @@ TEST(ScanTest, MultipleValues) {
 }
 
 TEST(ScanTest, MixedPlaceholders) {
-    auto result = stdx::scan<int, std::string, double>(
-        "42 Alex 3.5",
-        "{} {} {}"
-    );
+    auto result = stdx::scan<int, std::string, double>("42 Alex 3.5", "{} {} {}");
 
     ASSERT_TRUE(result.has_value());
 
@@ -142,10 +141,7 @@ TEST(ScanTest, InvalidFormat) {
 }
 
 TEST(ScanTest, ErrorInSecondValue) {
-    checkScanError<int, double>(
-        "Number: 42, Price: abc",
-        "Number: {%d}, Price: {%f}"
-    );
+    checkScanError<int, double>("Number: 42, Price: abc", "Number: {%d}, Price: {%f}");
 }
 TEST(ScanTest, SupportedTypes) {
     using stdx::details::is_supported;
@@ -173,8 +169,8 @@ TEST(ScanTest, SupportedTypes) {
     static_assert(!is_supported<bool>);
     static_assert(!is_supported<char>);
     static_assert(!is_supported<long double>);
-    static_assert(!is_supported<int&>);
-    static_assert(!is_supported<double&&>);
+    static_assert(!is_supported<int &>);
+    static_assert(!is_supported<double &&>);
     static_assert(!is_supported<void>);
-    static_assert(!is_supported<int*>);
+    static_assert(!is_supported<int *>);
 }
